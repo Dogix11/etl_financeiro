@@ -1,0 +1,23 @@
+# --- Interface de Comunicação ---
+# Biblioteca para controlar o bot do Telegram (recebimento das fotos e PDFs)
+pyTelegramBotAPI
+
+# --- Processamento de Imagens e OCR ---
+# Manipulação básica de imagens (abrir, redimensionar, salvar)
+Pillow
+# Conexão com a API do Gemini
+google-genai
+# Transformação do PDF em texto
+PyMuPDF
+
+# --- Manipulação de Dados e Arquivos ---
+# Para leitura, limpeza e padronização das faturas tabulares
+pandas
+# Para realizar as chamadas de API locais para o Ollama (Qwen 2.5)
+requests
+
+# --- Banco de Dados e Configurações ---
+# Driver nativo e otimizado para conectar o Python ao PostgreSQL
+psycopg2
+# Lê as senhas e tokens do arquivo .env de forma segura
+python-dotenv

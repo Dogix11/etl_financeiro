@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  etl_bot_app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: app_financeiro
+    restart: unless-stopped
+    volumes:
+      # Mapeamento dos datalakes e logs
+      - ./volumes/notas_fiscais:/app/notas_fiscais
+      - ./volumes/faturas:/app/faturas
+      - ./volumes/logs:/app/logs
+      # Mapeando o diretório app para desenvolvimento (hot-reload sem precisar de rebuild)
+      - ./app:/app
+    env_file:
+      - .env
+    networks:
+      - app_network
+      - postgres_network
+
+networks:
+  # Rede isolada para o pipeline de dados local
+  app_network:
+    driver: bridge
+  # Rede externa do Postgres que está em outro conteiner
+  postgres_network:
+    external: true
+    name: postgres-data_default
