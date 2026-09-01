@@ -20,4 +20,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 
 # 7. Comando que mantém o container vivo rodando o script principal
-CMD ["python", "app/telegram_listener.py"]
+CMD ["python", "app/delivery/telegram_listener.py"]

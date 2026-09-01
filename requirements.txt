@@ -1,6 +1,6 @@
 # --- Interface de Comunicação ---
 # Biblioteca para controlar o bot do Telegram (recebimento das fotos e PDFs)
-pyTelegramBotAPI
+python_telegram_bot
 
 # --- Processamento de Imagens e OCR ---
 # Manipulação básica de imagens (abrir, redimensionar, salvar)

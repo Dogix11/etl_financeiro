@@ -1,53 +1,51 @@
-
 services:
-
+  # ----------------------------------------------------
+  # 1. SERVIÇO DE INGESTÃO (BOT DO TELEGRAM)
+  # ----------------------------------------------------
   etl_bot_app:
-
     build:
-
       context: .
-
       dockerfile: Dockerfile
-
-    container_name: app_financeiro
-
+    container_name: app_financeiro_bot
     restart: unless-stopped
-
+    # Se quiser ser explícito, pode adicionar o command aqui também:
+    # command: python /app/delivery/telegram_listener.py
+    environment:
+      - TZ=America/Sao_Paulo
+      - PYTHONPATH=/app
     volumes:
-
-      # Mapeamento dos datalakes e logs
-
-      - ./volumes/notas_fiscais:/app/notas_fiscais
-
-      - ./volumes/faturas:/app/faturas
-
-      - ./volumes/logs:/app/logs
-
-      # Mapeando o diretório app para desenvolvimento (hot-reload sem precisar de rebuild)
-
       - ./app:/app
-
+      - ./volumes:/volumes
     env_file:
-
       - .env
-
     networks:
-
       - app_network
-
       - postgres-data_default
 
-
+  # ----------------------------------------------------
+  # 2. SERVIÇO DE PROCESSAMENTO (WORKER SILVER)
+  # ----------------------------------------------------
+  etl_worker_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app_financeiro_worker
+    restart: unless-stopped
+    command: python /app/worker.py  # <-- Aqui você aponta o worker
+    environment:
+      - TZ=America/Sao_Paulo
+      - PYTHONPATH=/app
+    volumes:
+      - ./app:/app
+      - ./volumes:/volumes
+    env_file:
+      - .env
+    networks:
+      - app_network
+      - postgres-data_default
 
 networks:
-
-  # Rede isolada para o pipeline de dados local
-
   app_network:
-
     driver: bridge
-
   postgres-data_default:
-
     external: true
-
