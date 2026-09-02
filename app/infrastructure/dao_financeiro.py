@@ -68,20 +68,30 @@ def buscar_pendentes_bronze():
     finally:
         conexao.close()
 
-def atualizar_status_bronze(id_bronze, status, mensagem_erro=None):
+def atualizar_status_bronze(id_bronze, status, mensagem_erro=None, novo_caminho=None):
     conexao = get_conexao()
     if not conexao: return
+    
     try:
         with conexao.cursor() as cursor:
-            cursor.execute("""
-                UPDATE bronze.extracao_bruta
-                SET status_integracao = %s, mensagem_erro = %s
-                WHERE id = %s;
-            """, (status, mensagem_erro, id_bronze))
+            if novo_caminho:
+                query = """
+                    UPDATE bronze.extracao_bruta 
+                    SET status_integracao = %s, mensagem_erro = %s, caminho_arquivo = %s
+                    WHERE id = %s
+                """
+                cursor.execute(query, (status, mensagem_erro, novo_caminho, id_bronze))
+            else:
+                query = """
+                    UPDATE bronze.extracao_bruta 
+                    SET status_integracao = %s, mensagem_erro = %s
+                    WHERE id = %s
+                """
+                cursor.execute(query, (status, mensagem_erro, id_bronze))
         conexao.commit()
     except Exception as e:
-        logging.error(f"Erro ao atualizar status Bronze: {e}")
         conexao.rollback()
+        logging.error(f"Erro ao atualizar status na bronze: {e}")
     finally:
         conexao.close()
 
@@ -214,5 +224,40 @@ def inserir_fatura_silver(id_bronze, dados):
     except Exception as e:
         conexao.rollback()
         raise Exception(f"Erro na transação Silver (Fatura): {e}")
+    finally:
+        conexao.close()
+
+def buscar_pendentes_outbox():
+    conexao = get_conexao()
+    if not conexao: return []
+    try:
+        with conexao.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, tipo_evento, payload 
+                FROM public.outbox_events 
+                WHERE status = 'PENDENTE'
+                ORDER BY criado_em ASC
+            """)
+            return cursor.fetchall()
+    except Exception as e:
+        logging.error(f"Erro ao buscar pendentes no outbox: {e}")
+        return []
+    finally:
+        conexao.close()
+
+def atualizar_status_outbox(id_evento, status):
+    conexao = get_conexao()
+    if not conexao: return
+    try:
+        with conexao.cursor() as cursor:
+            cursor.execute("""
+                UPDATE public.outbox_events 
+                SET status = %s, processado_em = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (status, id_evento))
+        conexao.commit()
+    except Exception as e:
+        conexao.rollback()
+        logging.error(f"Erro ao atualizar outbox ID {id_evento}: {e}")
     finally:
         conexao.close()

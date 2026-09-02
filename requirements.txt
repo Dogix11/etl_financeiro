@@ -9,6 +9,8 @@ Pillow
 google-genai
 # Transformação do PDF em texto
 PyMuPDF
+# Para a manipulação das Faturas com senhas
+pypdf==4.1.0
 
 # --- Manipulação de Dados e Arquivos ---
 # Para leitura, limpeza e padronização das faturas tabulares
