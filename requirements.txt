@@ -23,3 +23,10 @@ requests
 psycopg2-binary
 # Lê as senhas e tokens do arquivo .env de forma segura
 python-dotenv
+
+# --- Modulos para o acesso a Google Sheets ---
+# Modulo para o tratamento
+gspread==6.0.0
+# Para a autenticacao
+google-auth==2.28.0
+

@@ -136,7 +136,13 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
         logging.error(f"Comando não suportado pelo LLM: {comando_telegram}")
         return None
 
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    vertexai=True,
+    project="gen-lang-client-0129173455",
+    location="us-central1"
+    )
+
     arquivo_gemini = None
     conteudos_envio = [prompt]
     
