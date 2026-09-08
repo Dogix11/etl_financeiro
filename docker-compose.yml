@@ -16,6 +16,7 @@ services:
     volumes:
       - ./app:/app
       - ./volumes:/volumes
+      - ./.secrets:/secrets:ro
     env_file:
       - .env
     networks:
@@ -38,6 +39,7 @@ services:
     volumes:
       - ./app:/app
       - ./volumes:/volumes
+      - ./.secrets:/secrets:ro
     env_file:
       - .env
     networks:

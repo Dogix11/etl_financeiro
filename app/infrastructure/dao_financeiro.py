@@ -30,12 +30,12 @@ def verificar_hash_existente(hash_arquivo):
 def registrar_entrada_bronze(tipo_midia, comando, conteudo_texto=None, caminho_arquivo=None, hash_arquivo=None):
     conexao = get_conexao()
     if not conexao: return False
-    
+
     payload_llm = json.dumps({"comando_telegram": comando})
     origem_dado = "telegram"
-    
+
     query = """
-        INSERT INTO bronze.extracao_bruta 
+        INSERT INTO bronze.extracao_bruta
         (origem_dado, tipo_midia, conteudo_texto, caminho_arquivo, hash_arquivo, payload_llm)
         VALUES (%s, %s, %s, %s, %s, %s::jsonb)
         RETURNING id;
@@ -71,19 +71,19 @@ def buscar_pendentes_bronze():
 def atualizar_status_bronze(id_bronze, status, mensagem_erro=None, novo_caminho=None):
     conexao = get_conexao()
     if not conexao: return
-    
+
     try:
         with conexao.cursor() as cursor:
             if novo_caminho:
                 query = """
-                    UPDATE bronze.extracao_bruta 
+                    UPDATE bronze.extracao_bruta
                     SET status_integracao = %s, mensagem_erro = %s, caminho_arquivo = %s
                     WHERE id = %s
                 """
                 cursor.execute(query, (status, mensagem_erro, novo_caminho, id_bronze))
             else:
                 query = """
-                    UPDATE bronze.extracao_bruta 
+                    UPDATE bronze.extracao_bruta
                     SET status_integracao = %s, mensagem_erro = %s
                     WHERE id = %s
                 """
@@ -98,34 +98,46 @@ def atualizar_status_bronze(id_bronze, status, mensagem_erro=None, novo_caminho=
 def inserir_movimentacao_silver(id_bronze, dados):
     conexao = get_conexao()
     if not conexao: raise Exception("Sem conexão com o banco de dados.")
-    
+
     try:
         with conexao.cursor() as cursor:
             # 1. Inserir dados na Silver
             query = """
                 INSERT INTO silver.movimentacoes_financeiras (
-                    bronze_id, data_transacao, valor, tipo_movimentacao, direcao, 
-                    contraparte, categoria, descricao, titular_pagamento, centro_custo, 
+                    bronze_id, data_transacao, valor, tipo_movimentacao, direcao,
+                    contraparte, categoria, descricao, titular_pagamento, centro_custo,
                     percentual_seu, percentual_esposa, valor_cota_sua, valor_cota_esposa
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
             cursor.execute(query, (
-                id_bronze, dados.get('data_transacao'), dados.get('valor'), 
-                dados.get('tipo_movimentacao'), dados.get('direcao'), dados.get('contraparte'), 
-                dados.get('categoria'), dados.get('descricao'), dados.get('titular_pagamento'), 
-                dados.get('centro_custo'), dados.get('percentual_seu'), dados.get('percentual_esposa'), 
+                id_bronze, dados.get('data_transacao'), dados.get('valor'),
+                dados.get('tipo_movimentacao'), dados.get('direcao'), dados.get('contraparte'),
+                dados.get('categoria'), dados.get('descricao'), dados.get('titular_pagamento'),
+                dados.get('centro_custo'), dados.get('percentual_seu'), dados.get('percentual_esposa'),
                 dados.get('valor_cota_sua'), dados.get('valor_cota_esposa')
             ))
             silver_id = cursor.fetchone()[0]
 
-            # 2. Registrar no Outbox
-            payload_outbox = json.dumps({"id": silver_id, "bronze_id": id_bronze})
+            # 2. Registrar no Outbox com o payload completo contendo todos os dados necessários
+            payload_dados = {
+                "id": silver_id,
+                "bronze_id": id_bronze,
+                "data_transacao": str(dados.get('data_transacao')),
+                "valor": float(dados.get('valor', 0)),
+                "descricao": dados.get('descricao') or dados.get('contraparte', ''),
+                "titular_pagamento": dados.get('titular_pagamento', ''),
+                "percentual_seu": float(dados.get('percentual_seu', 100)),
+                "percentual_esposa": float(dados.get('percentual_esposa', 0))
+            }
+
+            payload_outbox = json.dumps(payload_dados)
+
             cursor.execute("""
                 INSERT INTO public.outbox_events (tipo_evento, payload)
                 VALUES (%s, %s::jsonb);
             """, ("NOVA_MOVIMENTACAO", payload_outbox))
-            
+
         conexao.commit()
     except Exception as e:
         conexao.rollback()
@@ -137,7 +149,7 @@ def inserir_movimentacao_silver(id_bronze, dados):
 def inserir_nota_fiscal_silver(id_bronze, dados):
     conexao = get_conexao()
     if not conexao: raise Exception("Sem conexão com o banco de dados.")
-    
+
     try:
         with conexao.cursor() as cursor:
             # 1. Inserir Nota Fiscal
@@ -151,11 +163,11 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
                 RETURNING id;
             """
             cursor.execute(query_nota, (
-                id_bronze, dados.get('chave_acesso'), dados.get('cnpj_emissor'), dados.get('nome_emissor'), 
-                dados.get('data_emissao'), dados.get('valor_subtotal'), dados.get('valor_desconto'), 
-                dados.get('valor_acrescimo'), dados.get('valor_total'), dados.get('categoria'), 
-                dados.get('forma_pagamento'), dados.get('natureza_operacao'), dados.get('titular_pagamento'), 
-                dados.get('centro_custo'), dados.get('percentual_seu'), dados.get('percentual_esposa'), 
+                id_bronze, dados.get('chave_acesso'), dados.get('cnpj_emissor'), dados.get('nome_emissor'),
+                dados.get('data_emissao'), dados.get('valor_subtotal'), dados.get('valor_desconto'),
+                dados.get('valor_acrescimo'), dados.get('valor_total'), dados.get('categoria'),
+                dados.get('forma_pagamento'), dados.get('natureza_operacao'), dados.get('titular_pagamento'),
+                dados.get('centro_custo'), dados.get('percentual_seu'), dados.get('percentual_esposa'),
                 dados.get('valor_cota_sua'), dados.get('valor_cota_esposa')
             ))
             id_nota = cursor.fetchone()[0]
@@ -165,15 +177,15 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
             if itens:
                 query_item = """
                     INSERT INTO silver.itens_nota_fiscal (
-                        nota_fiscal_id, nome_produto, quantidade, unidade_medida, 
+                        nota_fiscal_id, nome_produto, quantidade, unidade_medida,
                         preco_unitario, preco_total_item, preco_total_liquido, categoria_produto
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
                 """
                 for item in itens:
                     cursor.execute(query_item, (
-                        id_nota, item.get('nome_produto'), item.get('quantidade'), 
-                        item.get('unidade_medida'), item.get('preco_unitario'), 
-                        item.get('preco_total_item'), item.get('preco_total_liquido'), 
+                        id_nota, item.get('nome_produto'), item.get('quantidade'),
+                        item.get('unidade_medida'), item.get('preco_unitario'),
+                        item.get('preco_total_item'), item.get('preco_total_liquido'),
                         item.get('categoria_produto')
                     ))
 
@@ -195,20 +207,20 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
 def inserir_fatura_silver(id_bronze, dados):
     conexao = get_conexao()
     if not conexao: raise Exception("Sem conexão com o banco de dados.")
-    
+
     try:
         with conexao.cursor() as cursor:
             # 1. Inserir Fatura
             query = """
                 INSERT INTO silver.faturas (
-                    bronze_id, banco, mes_referencia, valor_fatura, data_vencimento, 
+                    bronze_id, banco, mes_referencia, valor_fatura, data_vencimento,
                     data_pagamento, status_pagamento, instituicao_emissora, titular_cartao
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
             cursor.execute(query, (
-                id_bronze, dados.get('banco'), dados.get('mes_referencia'), 
-                dados.get('valor_fatura'), dados.get('data_vencimento'), dados.get('data_pagamento'), 
+                id_bronze, dados.get('banco'), dados.get('mes_referencia'),
+                dados.get('valor_fatura'), dados.get('data_vencimento'), dados.get('data_pagamento'),
                 dados.get('status_pagamento'), dados.get('instituicao_emissora'), dados.get('titular_cartao')
             ))
             silver_id = cursor.fetchone()[0]
@@ -219,7 +231,7 @@ def inserir_fatura_silver(id_bronze, dados):
                 INSERT INTO public.outbox_events (tipo_evento, payload)
                 VALUES (%s, %s::jsonb);
             """, ("NOVA_FATURA", payload_outbox))
-            
+
         conexao.commit()
     except Exception as e:
         conexao.rollback()
@@ -233,8 +245,8 @@ def buscar_pendentes_outbox():
     try:
         with conexao.cursor() as cursor:
             cursor.execute("""
-                SELECT id, tipo_evento, payload 
-                FROM public.outbox_events 
+                SELECT id, tipo_evento, payload
+                FROM public.outbox_events
                 WHERE status = 'PENDENTE'
                 ORDER BY criado_em ASC
             """)
@@ -251,7 +263,7 @@ def atualizar_status_outbox(id_evento, status):
     try:
         with conexao.cursor() as cursor:
             cursor.execute("""
-                UPDATE public.outbox_events 
+                UPDATE public.outbox_events
                 SET status = %s, processado_em = CURRENT_TIMESTAMP
                 WHERE id = %s
             """, (status, id_evento))

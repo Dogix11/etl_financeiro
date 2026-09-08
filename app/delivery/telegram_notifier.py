@@ -41,7 +41,7 @@ def _formatar_mensagem(id_evento, tipo_evento, payload):
 def disparar_mensagem_telegram(id_evento, tipo_evento, payload):
     """Envia uma única mensagem formatada para a API do Telegram."""
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID") 
+    chat_id = os.getenv("TELEGRAM_ADMIN_ID") 
     
     if not bot_token or not chat_id:
         raise ValueError("Credenciais do Telegram ausentes no .env")

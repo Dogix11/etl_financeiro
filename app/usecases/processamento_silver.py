@@ -59,7 +59,9 @@ def executar_pipeline_silver():
                 raise ValueError("LLM não retornou um JSON válido.")
                 
             if comando_telegram == "/gasto":
-                inserir_movimentacao_silver(id_bronze, dados_extraidos)
+                logging.info(f"Tentando inserir {len(dados_extraidos)} itens referentes ao registro {id_bronze}.")
+                for gasto in dados_extraidos:
+                    inserir_movimentacao_silver(id_bronze, gasto)
             elif comando_telegram == "/nota":
                 inserir_nota_fiscal_silver(id_bronze, dados_extraidos)
             elif comando_telegram == "/fatura":

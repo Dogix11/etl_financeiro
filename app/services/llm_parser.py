@@ -1,49 +1,54 @@
 import os
 import json
 import logging
+import mimetypes
 from datetime import datetime
 from google import genai
 from google.genai import types
 from pypdf import PdfReader, PdfWriter
 
-MODELO_LLM = "gemini-3.5-flash"
+MODELO_LLM = "gemini-2.5-pro"
 
 def _obter_data_atual():
     return datetime.now().strftime("%Y-%m-%d")
 
 def _construir_prompt(comando_telegram):
     data_hoje = _obter_data_atual()
-    
+
     instrucoes_base = f"""
     Você é um extrator de dados financeiros. Hoje é {data_hoje}.
     Sua única saída deve ser um JSON válido, sem formatação markdown (```json).
-    Regras de Rateio: Se o texto ou nota indicar divisão com parceira (ex: "esposa", "Flora"), 
+    Regras de Rateio: Se o texto ou nota indicar divisão com parceira (ex: "esposa", "Flora"),
     calcule os campos percentual_seu, percentual_esposa, valor_cota_sua e valor_cota_esposa.
     O padrão é percentual_seu = 100.0 e percentual_esposa = 0.0.
     """
 
     if comando_telegram == "/gasto":
         return instrucoes_base + """
-        Extraia as informações do texto fornecido e substitua os valores do JSON abaixo pelos DADOS REAIS.
-        Se uma informação não for encontrada, retorne null.
+        O texto fornecido pode conter UM ou MÚLTIPLOS produtos/gastos.
+        Identifique e separe CADA PRODUTO individualmente.
+        Retorne SEMPRE uma lista JSON. Se houver apenas um gasto, retorne uma lista contendo apenas um objeto. Se houver vários, retorne um objeto para cada um.
         Mantenha EXATAMENTE esta estrutura de chaves:
-        {
-            "tipo_registro": "gasto_avulso",
-            "data_transacao": "YYYY-MM-DD HH:MM:SS",
-            "valor": 0.00,
-            "tipo_movimentacao": "despesa|receita",
-            "direcao": "OUT|IN",
-            "contraparte": "Nome do local ou pessoa",
-            "categoria": "Categoria inferida",
-            "descricao": "Descrição original",
-            "titular_pagamento": "seu nome ou da conta",
-            "centro_custo": "geral",
-            "percentual_seu": 100.0,
-            "percentual_esposa": 0.0,
-            "valor_cota_sua": 0.00,
-            "valor_cota_esposa": 0.00
-        }
+        [
+            {
+                "tipo_registro": "gasto_avulso",
+                "data_transacao": "YYYY-MM-DD HH:MM:SS",
+                "valor": 0.00,
+                "tipo_movimentacao": "despesa|receita",
+                "direcao": "OUT|IN",
+                "contraparte": "Nome do local ou pessoa",
+                "categoria": "Categoria inferida",
+                "descricao": "Descrição original do item",
+                "titular_pagamento": "seu nome ou da conta",
+                "centro_custo": "geral",
+                "percentual_seu": 100.0,
+                "percentual_esposa": 0.0,
+                "valor_cota_sua": 0.00,
+                "valor_cota_esposa": 0.00
+            }
+        ]
         """
+
     elif comando_telegram == "/nota":
         return instrucoes_base + """
         Analise a imagem da nota fiscal anexa e substitua os valores do JSON abaixo pelos DADOS REAIS extraídos da imagem.
@@ -104,28 +109,28 @@ def _desbloquear_pdf(caminho_arquivo):
     """Tenta desbloquear o PDF com as senhas configuradas e retorna um arquivo temporário."""
     senhas_env = os.getenv("SENHA_FATURA", "")
     senhas = [s.strip() for s in senhas_env.split(",")] if senhas_env else []
-    
+
     try:
         reader = PdfReader(caminho_arquivo)
         if not reader.is_encrypted:
-            return caminho_arquivo, False # Não estava bloqueado
-            
+            return caminho_arquivo, False
+
         for senha in senhas:
             if reader.decrypt(senha) != 0:
                 writer = PdfWriter()
                 for page in reader.pages:
                     writer.add_page(page)
-                
+
                 caminho_temp = caminho_arquivo.replace(".pdf", "_temp_desbloqueado.pdf")
                 with open(caminho_temp, "wb") as f:
                     writer.write(f)
-                
+
                 logging.info(f"🔓 PDF desbloqueado com sucesso.")
                 return caminho_temp, True
-                
+
         logging.error("Nenhuma das senhas fornecidas conseguiu desbloquear a fatura.")
         raise ValueError("Falha de descriptografia: Senha incorreta ou ausente no .env.")
-        
+
     except Exception as e:
         logging.error(f"Erro ao tentar ler o PDF: {e}")
         raise e
@@ -136,16 +141,15 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
         logging.error(f"Comando não suportado pelo LLM: {comando_telegram}")
         return None
 
+    # Inicialização simplificada da Vertex AI
+    # A SDK vai ler automaticamente a variável GOOGLE_APPLICATION_CREDENTIALS do seu .env
     client = genai.Client(
-    api_key=os.getenv("GEMINI_API_KEY"),
-    vertexai=True,
-    project="gen-lang-client-0129173455",
-    location="us-central1"
+        vertexai=True,
+        project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+        location="us-central1"
     )
 
-    arquivo_gemini = None
     conteudos_envio = [prompt]
-    
     caminho_upload = caminho_arquivo
     arquivo_temp_criado = False
 
@@ -154,10 +158,19 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
             if comando_telegram == "/fatura" and caminho_arquivo.lower().endswith(".pdf"):
                 caminho_upload, arquivo_temp_criado = _desbloquear_pdf(caminho_arquivo)
 
-            logging.info(f"Fazendo upload para o Gemini: {caminho_upload}")
-            arquivo_gemini = client.files.upload(file=caminho_upload)
-            conteudos_envio.append(arquivo_gemini)
-        
+            # Descobre o MimeType dinamicamente (ex: image/jpeg ou application/pdf)
+            mime_type, _ = mimetypes.guess_type(caminho_upload)
+            if not mime_type:
+                mime_type = "application/pdf" if caminho_upload.lower().endswith(".pdf") else "image/jpeg"
+
+            # Lê o arquivo como bytes e adiciona ao payload (Inline Data)
+            with open(caminho_upload, "rb") as f:
+                file_bytes = f.read()
+            
+            conteudos_envio.append(
+                types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
+            )
+
         if conteudo_texto:
             conteudos_envio.append(f"Texto do usuário: {conteudo_texto}")
 
@@ -168,23 +181,24 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
                 response_mime_type="application/json"
             )
         )
-        
-        if arquivo_gemini:
-            client.files.delete(name=arquivo_gemini.name)
 
-        return json.loads(resposta.text)
+        resultado = json.loads(resposta.text)
+        
+        # Se o LLM retornar um dicionário único em vez de lista, envelopamos forçadamente
+        if isinstance(resultado, dict):
+            resultado = [resultado]
+            
+        return resultado
+   
+        if isinstance(resultado, list) and len(resultado) > 0:
+            return resultado[0]
+            
+        return resultado
 
     except Exception as e:
-        logging.error(f"Falha na extração LLM: {e}")
-        if arquivo_gemini:
-            try:
-                client.files.delete(name=arquivo_gemini.name)
-            except Exception:
-                pass
+        logging.error(f"Falha na extração Vertex AI: {e}")
         raise e
     finally:
-        # Garante que o PDF temporário sem senha será deletado do seu disco, 
-        # independentemente de a API do Gemini ter falhado ou não
         if arquivo_temp_criado and caminho_upload and os.path.exists(caminho_upload):
             os.remove(caminho_upload)
             logging.info("🗑️ Arquivo temporário descriptografado apagado por segurança.")

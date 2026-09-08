@@ -13,7 +13,7 @@ def executar_consumidores_outbox():
         
         try:
             # 1. Integração com o Google Sheets (Apenas para movimentações e notas financeiras)
-            if tipo_evento in ['movimentacao_inserida', 'nota_fiscal_inserida']:
+            if tipo_evento in ['NOVA_MOVIMENTACAO']:
                 exportar_registro_sheets(payload)
                 logging.info(f"📊 Dados exportados para o Sheets (Evento: {id_evento})")
             

@@ -12,3 +12,4 @@ __pycache__/
 
 # Ignora o banco de dados local do PostgreSQL (caso a pasta de dados do docker fique exposta)
 pgdata/
+.secrets/
