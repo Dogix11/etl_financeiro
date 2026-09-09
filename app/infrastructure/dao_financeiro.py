@@ -172,20 +172,27 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
             ))
             id_nota = cursor.fetchone()[0]
 
-            # 2. Inserir Itens da Nota
+            # 2. Inserir Itens da Nota (Atualizado com quantidades embutidas)
             itens = dados.get('itens', [])
             if itens:
                 query_item = """
                     INSERT INTO silver.itens_nota_fiscal (
                         nota_fiscal_id, nome_produto, quantidade, unidade_medida,
+                        quantidade_embutida, unidade_medida_embutida,
                         preco_unitario, preco_total_item, preco_total_liquido, categoria_produto
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                 """
                 for item in itens:
                     cursor.execute(query_item, (
-                        id_nota, item.get('nome_produto'), item.get('quantidade'),
-                        item.get('unidade_medida'), item.get('preco_unitario'),
-                        item.get('preco_total_item'), item.get('preco_total_liquido'),
+                        id_nota, 
+                        item.get('nome_produto'), 
+                        item.get('quantidade_cupom'), # Mapeado do novo prompt
+                        item.get('unidade_medida_cupom'), # Mapeado do novo prompt
+                        item.get('quantidade_embutida'), 
+                        item.get('unidade_medida_embutida'),
+                        item.get('preco_unitario'), 
+                        item.get('preco_total_item'), 
+                        item.get('preco_total_liquido'),
                         item.get('categoria_produto')
                     ))
 
@@ -210,22 +217,39 @@ def inserir_fatura_silver(id_bronze, dados):
 
     try:
         with conexao.cursor() as cursor:
-            # 1. Inserir Fatura
-            query = """
+            # 1. Inserir Fatura (Cabeçalho principal)
+            query_fatura = """
                 INSERT INTO silver.faturas (
                     bronze_id, banco, mes_referencia, valor_fatura, data_vencimento,
                     data_pagamento, status_pagamento, instituicao_emissora, titular_cartao
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
-            cursor.execute(query, (
+            cursor.execute(query_fatura, (
                 id_bronze, dados.get('banco'), dados.get('mes_referencia'),
                 dados.get('valor_fatura'), dados.get('data_vencimento'), dados.get('data_pagamento'),
                 dados.get('status_pagamento'), dados.get('instituicao_emissora'), dados.get('titular_cartao')
             ))
             silver_id = cursor.fetchone()[0]
 
-            # 2. Registrar no Outbox
+            # 2. Inserir as Transações da Fatura (Nova tabela filha)
+            transacoes = dados.get('transacoes', [])
+            if transacoes:
+                query_transacao = """
+                    INSERT INTO silver.transacoes_fatura (
+                        fatura_id, data_transacao, estabelecimento, valor_brl, identificacao_cartao
+                    ) VALUES (%s, %s, %s, %s, %s);
+                """
+                for transacao in transacoes:
+                    cursor.execute(query_transacao, (
+                        silver_id,
+                        transacao.get('data_transacao'),
+                        transacao.get('estabelecimento'),
+                        transacao.get('valor_brl'),
+                        transacao.get('identificacao_cartao')
+                    ))
+
+            # 3. Registrar no Outbox
             payload_outbox = json.dumps({"id_fatura": silver_id, "bronze_id": id_bronze})
             cursor.execute("""
                 INSERT INTO public.outbox_events (tipo_evento, payload)
@@ -236,24 +260,6 @@ def inserir_fatura_silver(id_bronze, dados):
     except Exception as e:
         conexao.rollback()
         raise Exception(f"Erro na transação Silver (Fatura): {e}")
-    finally:
-        conexao.close()
-
-def buscar_pendentes_outbox():
-    conexao = get_conexao()
-    if not conexao: return []
-    try:
-        with conexao.cursor() as cursor:
-            cursor.execute("""
-                SELECT id, tipo_evento, payload
-                FROM public.outbox_events
-                WHERE status = 'PENDENTE'
-                ORDER BY criado_em ASC
-            """)
-            return cursor.fetchall()
-    except Exception as e:
-        logging.error(f"Erro ao buscar pendentes no outbox: {e}")
-        return []
     finally:
         conexao.close()
 

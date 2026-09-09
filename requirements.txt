@@ -2,15 +2,19 @@
 # Biblioteca para controlar o bot do Telegram (recebimento das fotos e PDFs)
 python_telegram_bot
 
-# --- Processamento de Imagens e OCR ---
+# --- Suporte e conexões com APIs de LLM ---
 # Manipulação básica de imagens (abrir, redimensionar, salvar)
 Pillow
 # Conexão com a API do Gemini
 google-genai
+# Conexão com a API da OpenAI
+openai==3.9.0
 # Transformação do PDF em texto
 PyMuPDF
 # Para a manipulação das Faturas com senhas
 pypdf==4.1.0
+# Para acessar MCPs
+mcp==2.2.0
 
 # --- Manipulação de Dados e Arquivos ---
 # Para leitura, limpeza e padronização das faturas tabulares

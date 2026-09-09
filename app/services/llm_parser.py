@@ -51,12 +51,16 @@ def _construir_prompt(comando_telegram):
 
     elif comando_telegram == "/nota":
         return instrucoes_base + """
-        Analise a imagem da nota fiscal anexa e substitua os valores do JSON abaixo pelos DADOS REAIS extraídos da imagem.
-        Se uma informação não for encontrada na nota, retorne null.
+        Analise a imagem da nota fiscal anexa e substitua os valores do JSON abaixo pelos DADOS REAIS extraídos.
+        Se uma informação não for encontrada, retorne null.
+        
+        Atenção aos Itens: O campo 'quantidade_cupom' refere-se ao multiplicador exato impresso na nota (ex: 1 UN). 
+        No entanto, leia atentamente o 'nome_produto'. Se a descrição contiver volumes, pesos ou pacotes (ex: '200G', '1KG', '500ML', 'C/25'), extraia esse valor numérico para 'quantidade_embutida' e a unidade para 'unidade_medida_embutida' (G, KG, ML, L, UN). Caso não haja, retorne null em ambos.
+
         Mantenha EXATAMENTE esta estrutura de chaves:
         {
             "tipo_registro": "nota_fiscal",
-            "chave_acesso": "Somente números, se houver",
+            "chave_acesso": "Somente números",
             "cnpj_emissor": "Apenas números",
             "nome_emissor": "Nome do estabelecimento",
             "data_emissao": "YYYY-MM-DD",
@@ -76,8 +80,10 @@ def _construir_prompt(comando_telegram):
             "itens": [
                 {
                     "nome_produto": "Nome do produto real da nota",
-                    "quantidade": 1.000,
-                    "unidade_medida": "UN|KG",
+                    "quantidade_cupom": 1.000,
+                    "unidade_medida_cupom": "UN|KG",
+                    "quantidade_embutida": 200.00,
+                    "unidade_medida_embutida": "G|KG|ML|L|UN",
                     "preco_unitario": 0.00,
                     "preco_total_item": 0.00,
                     "preco_total_liquido": 0.00,
@@ -86,10 +92,12 @@ def _construir_prompt(comando_telegram):
             ]
         }
         """
+        
     elif comando_telegram == "/fatura":
         return instrucoes_base + """
-        Analise o PDF da fatura anexa e substitua os valores do JSON abaixo pelos DADOS REAIS extraídos.
+        Analise o PDF da fatura anexa e extraia os dados gerais e TODAS as transações individuais listadas.
         Se uma informação não for encontrada, retorne null.
+        Para as transações, observe o cabeçalho do titular/cartão (ex: DIOGO F CARVALHO - 4998********1275) e atribua-o aos itens abaixo dele.
         Mantenha EXATAMENTE esta estrutura de chaves:
         {
             "tipo_registro": "fatura",
@@ -100,7 +108,15 @@ def _construir_prompt(comando_telegram):
             "data_pagamento": null,
             "status_pagamento": "ABERTO",
             "instituicao_emissora": "Emissora",
-            "titular_cartao": "Nome no cartão"
+            "titular_cartao": "Nome no cartão principal",
+            "transacoes": [
+                {
+                    "data_transacao": "YYYY-MM-DD",
+                    "estabelecimento": "Nome do estabelecimento na fatura (ex: BULLGUER, POINTDALIA)",
+                    "valor_brl": 0.00,
+                    "identificacao_cartao": "Nome e/ou final do cartão (ex: DIOGO F CARVALHO - 1275)"
+                }
+            ]
         }
         """
     return None
@@ -190,10 +206,6 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
             
         return resultado
    
-        if isinstance(resultado, list) and len(resultado) > 0:
-            return resultado[0]
-            
-        return resultado
 
     except Exception as e:
         logging.error(f"Falha na extração Vertex AI: {e}")
