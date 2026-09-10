@@ -10,20 +10,24 @@ def executar_consumidores_outbox():
 
     for evento in eventos:
         id_evento, tipo_evento, payload = evento
-        
+
         try:
-            # 1. Integração com o Google Sheets (Apenas para movimentações e notas financeiras)
-            if tipo_evento in ['NOVA_MOVIMENTACAO']:
-                exportar_registro_sheets(payload)
-                logging.info(f"📊 Dados exportados para o Sheets (Evento: {id_evento})")
-            
+            # 1. Integração com o Google Sheets (Apenas para Movimentações divididas)
+            if tipo_evento == 'NOVA_MOVIMENTACAO':
+                # REGRA DE NEGÓCIO: Só envia para a planilha do casal se houver divisão com a Flora
+                if payload.get('percentual_flora', 0) > 0:
+                    exportar_registro_sheets(payload)
+                    logging.info(f"📊 Dados exportados para o Sheets (Evento: {id_evento})")
+                else:
+                    logging.info(f"⏭️ Gasto 100% Diogo ignorado no Sheets (Evento: {id_evento})")
+
             # 2. Integração com o Telegram (Para todos os eventos)
             disparar_mensagem_telegram(id_evento, tipo_evento, payload)
-            
+
             # 3. Sucesso em todos os sistemas externos: Marca como concluído
             atualizar_status_outbox(id_evento, 'PROCESSADO')
-            
+
         except Exception as e:
-            # Se o Google ou o Telegram falharem, o status continua PENDENTE 
+            # Se o Google ou o Telegram falharem, o status continua PENDENTE
             # e o worker tentará novamente no próximo ciclo, garantindo zero perda de dados.
             logging.error(f"❌ Erro ao processar evento Outbox ID {id_evento}: {e}")

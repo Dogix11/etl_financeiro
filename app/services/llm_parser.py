@@ -12,15 +12,18 @@ MODELO_LLM = "gemini-2.5-pro"
 def _obter_data_atual():
     return datetime.now().strftime("%Y-%m-%d")
 
-def _construir_prompt(comando_telegram):
+def _construir_prompt(comando_telegram, nome_remetente):
     data_hoje = _obter_data_atual()
 
     instrucoes_base = f"""
     Você é um extrator de dados financeiros. Hoje é {data_hoje}.
+    O usuário que enviou esta mensagem é: {nome_remetente}.
     Sua única saída deve ser um JSON válido, sem formatação markdown (```json).
-    Regras de Rateio: Se o texto ou nota indicar divisão com parceira (ex: "esposa", "Flora"),
-    calcule os campos percentual_seu, percentual_esposa, valor_cota_sua e valor_cota_esposa.
-    O padrão é percentual_seu = 100.0 e percentual_esposa = 0.0.
+
+    Regras de Rateio (Aplicadas ITEM A ITEM):
+    1. REGRA PADRÃO: Se o texto do usuário não mencionar divisões, 100% do valor de CADA item pertence a {nome_remetente}. O outro parceiro recebe 0%.
+    2. EXCEÇÃO: O usuário pode instruir no texto divisões específicas (ex: "dividir a manteiga", "o milka é da flora").
+    3. Aplique as exceções APENAS aos itens mencionados. Os demais itens continuam na Regra Padrão.
     """
 
     if comando_telegram == "/gasto":
@@ -41,10 +44,10 @@ def _construir_prompt(comando_telegram):
                 "descricao": "Descrição original do item",
                 "titular_pagamento": "seu nome ou da conta",
                 "centro_custo": "geral",
-                "percentual_seu": 100.0,
-                "percentual_esposa": 0.0,
-                "valor_cota_sua": 0.00,
-                "valor_cota_esposa": 0.00
+                "percentual_diogo": 100.0,
+                "percentual_flora": 0.0,
+                "valor_cota_diogo": 0.00,
+                "valor_cota_flora": 0.00
             }
         ]
         """
@@ -53,8 +56,8 @@ def _construir_prompt(comando_telegram):
         return instrucoes_base + """
         Analise a imagem da nota fiscal anexa e substitua os valores do JSON abaixo pelos DADOS REAIS extraídos.
         Se uma informação não for encontrada, retorne null.
-        
-        Atenção aos Itens: O campo 'quantidade_cupom' refere-se ao multiplicador exato impresso na nota (ex: 1 UN). 
+
+        Atenção aos Itens: O campo 'quantidade_cupom' refere-se ao multiplicador exato impresso na nota (ex: 1 UN).
         No entanto, leia atentamente o 'nome_produto'. Se a descrição contiver volumes, pesos ou pacotes (ex: '200G', '1KG', '500ML', 'C/25'), extraia esse valor numérico para 'quantidade_embutida' e a unidade para 'unidade_medida_embutida' (G, KG, ML, L, UN). Caso não haja, retorne null em ambos.
 
         Mantenha EXATAMENTE esta estrutura de chaves:
@@ -73,10 +76,6 @@ def _construir_prompt(comando_telegram):
             "natureza_operacao": "Venda, Serviço, etc",
             "titular_pagamento": "seu nome",
             "centro_custo": "geral",
-            "percentual_seu": 100.0,
-            "percentual_esposa": 0.0,
-            "valor_cota_sua": 0.00,
-            "valor_cota_esposa": 0.00,
             "itens": [
                 {
                     "nome_produto": "Nome do produto real da nota",
@@ -87,12 +86,16 @@ def _construir_prompt(comando_telegram):
                     "preco_unitario": 0.00,
                     "preco_total_item": 0.00,
                     "preco_total_liquido": 0.00,
-                    "categoria_produto": "Subcategoria"
+                    "categoria_produto": "Subcategoria",
+                    "percentual_diogo": 100.0,
+                    "percentual_flora": 0.0,
+                    "valor_cota_diogo": 0.00,
+                    "valor_cota_flora": 0.00
                 }
             ]
         }
         """
-        
+
     elif comando_telegram == "/fatura":
         return instrucoes_base + """
         Analise o PDF da fatura anexa e extraia os dados gerais e TODAS as transações individuais listadas.
@@ -151,14 +154,13 @@ def _desbloquear_pdf(caminho_arquivo):
         logging.error(f"Erro ao tentar ler o PDF: {e}")
         raise e
 
-def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, comando_telegram):
-    prompt = _construir_prompt(comando_telegram)
+# Assinatura atualizada para receber o nome_remetente
+def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, comando_telegram, nome_remetente="Desconhecido"):
+    prompt = _construir_prompt(comando_telegram, nome_remetente)
     if not prompt:
         logging.error(f"Comando não suportado pelo LLM: {comando_telegram}")
         return None
 
-    # Inicialização simplificada da Vertex AI
-    # A SDK vai ler automaticamente a variável GOOGLE_APPLICATION_CREDENTIALS do seu .env
     client = genai.Client(
         vertexai=True,
         project=os.getenv("GOOGLE_CLOUD_PROJECT"),
@@ -174,15 +176,13 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
             if comando_telegram == "/fatura" and caminho_arquivo.lower().endswith(".pdf"):
                 caminho_upload, arquivo_temp_criado = _desbloquear_pdf(caminho_arquivo)
 
-            # Descobre o MimeType dinamicamente (ex: image/jpeg ou application/pdf)
             mime_type, _ = mimetypes.guess_type(caminho_upload)
             if not mime_type:
                 mime_type = "application/pdf" if caminho_upload.lower().endswith(".pdf") else "image/jpeg"
 
-            # Lê o arquivo como bytes e adiciona ao payload (Inline Data)
             with open(caminho_upload, "rb") as f:
                 file_bytes = f.read()
-            
+
             conteudos_envio.append(
                 types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
             )
@@ -199,13 +199,11 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
         )
 
         resultado = json.loads(resposta.text)
-        
-        # Se o LLM retornar um dicionário único em vez de lista, envelopamos forçadamente
+
         if isinstance(resultado, dict):
             resultado = [resultado]
-            
+
         return resultado
-   
 
     except Exception as e:
         logging.error(f"Falha na extração Vertex AI: {e}")

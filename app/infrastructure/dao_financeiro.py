@@ -27,11 +27,14 @@ def verificar_hash_existente(hash_arquivo):
     finally:
         conexao.close()
 
-def registrar_entrada_bronze(tipo_midia, comando, conteudo_texto=None, caminho_arquivo=None, hash_arquivo=None):
+def registrar_entrada_bronze(tipo_midia, comando, conteudo_texto=None, caminho_arquivo=None, hash_arquivo=None, nome_remetente="Desconhecido"):
     conexao = get_conexao()
     if not conexao: return False
 
-    payload_llm = json.dumps({"comando_telegram": comando})
+    payload_llm = json.dumps({
+        "comando_telegram": comando,
+        "nome_remetente": nome_remetente
+    })
     origem_dado = "telegram"
 
     query = """
@@ -101,25 +104,26 @@ def inserir_movimentacao_silver(id_bronze, dados):
 
     try:
         with conexao.cursor() as cursor:
-            # 1. Inserir dados na Silver
+            # Atualizado com colunas diogo/flora e chaves de ledger (nota_fiscal_id, item_nota_id)
             query = """
                 INSERT INTO silver.movimentacoes_financeiras (
                     bronze_id, data_transacao, valor, tipo_movimentacao, direcao,
                     contraparte, categoria, descricao, titular_pagamento, centro_custo,
-                    percentual_seu, percentual_esposa, valor_cota_sua, valor_cota_esposa
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    percentual_diogo, percentual_flora, valor_cota_diogo, valor_cota_flora,
+                    nota_fiscal_id, item_nota_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
             cursor.execute(query, (
                 id_bronze, dados.get('data_transacao'), dados.get('valor'),
                 dados.get('tipo_movimentacao'), dados.get('direcao'), dados.get('contraparte'),
                 dados.get('categoria'), dados.get('descricao'), dados.get('titular_pagamento'),
-                dados.get('centro_custo'), dados.get('percentual_seu'), dados.get('percentual_esposa'),
-                dados.get('valor_cota_sua'), dados.get('valor_cota_esposa')
+                dados.get('centro_custo'), dados.get('percentual_diogo'), dados.get('percentual_flora'),
+                dados.get('valor_cota_diogo'), dados.get('valor_cota_flora'),
+                dados.get('nota_fiscal_id'), dados.get('item_nota_id')
             ))
             silver_id = cursor.fetchone()[0]
 
-            # 2. Registrar no Outbox com o payload completo contendo todos os dados necessários
             payload_dados = {
                 "id": silver_id,
                 "bronze_id": id_bronze,
@@ -127,8 +131,8 @@ def inserir_movimentacao_silver(id_bronze, dados):
                 "valor": float(dados.get('valor', 0)),
                 "descricao": dados.get('descricao') or dados.get('contraparte', ''),
                 "titular_pagamento": dados.get('titular_pagamento', ''),
-                "percentual_seu": float(dados.get('percentual_seu', 100)),
-                "percentual_esposa": float(dados.get('percentual_esposa', 0))
+                "percentual_diogo": float(dados.get('percentual_diogo', 100)),
+                "percentual_flora": float(dados.get('percentual_flora', 0))
             }
 
             payload_outbox = json.dumps(payload_dados)
@@ -152,13 +156,13 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
 
     try:
         with conexao.cursor() as cursor:
-            # 1. Inserir Nota Fiscal
+            # Atualizado com as colunas renomeadas
             query_nota = """
                 INSERT INTO silver.notas_fiscais (
                     bronze_id, chave_acesso, cnpj_emissor, nome_emissor, data_emissao,
                     valor_subtotal, valor_desconto, valor_acrescimo, valor_total,
                     categoria, forma_pagamento, natureza_operacao, titular_pagamento,
-                    centro_custo, percentual_seu, percentual_esposa, valor_cota_sua, valor_cota_esposa
+                    centro_custo, percentual_diogo, percentual_flora, valor_cota_diogo, valor_cota_flora
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
@@ -167,36 +171,41 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
                 dados.get('data_emissao'), dados.get('valor_subtotal'), dados.get('valor_desconto'),
                 dados.get('valor_acrescimo'), dados.get('valor_total'), dados.get('categoria'),
                 dados.get('forma_pagamento'), dados.get('natureza_operacao'), dados.get('titular_pagamento'),
-                dados.get('centro_custo'), dados.get('percentual_seu'), dados.get('percentual_esposa'),
-                dados.get('valor_cota_sua'), dados.get('valor_cota_esposa')
+                dados.get('centro_custo'), dados.get('percentual_diogo'), dados.get('percentual_flora'),
+                dados.get('valor_cota_diogo'), dados.get('valor_cota_flora')
             ))
             id_nota = cursor.fetchone()[0]
 
-            # 2. Inserir Itens da Nota (Atualizado com quantidades embutidas)
             itens = dados.get('itens', [])
+            itens_inseridos = []
+            
             if itens:
+                # O RETURNING id; foi adicionado para capturarmos os IDs gerados
                 query_item = """
                     INSERT INTO silver.itens_nota_fiscal (
                         nota_fiscal_id, nome_produto, quantidade, unidade_medida,
                         quantidade_embutida, unidade_medida_embutida,
                         preco_unitario, preco_total_item, preco_total_liquido, categoria_produto
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id;
                 """
                 for item in itens:
                     cursor.execute(query_item, (
-                        id_nota, 
-                        item.get('nome_produto'), 
-                        item.get('quantidade_cupom'), # Mapeado do novo prompt
-                        item.get('unidade_medida_cupom'), # Mapeado do novo prompt
-                        item.get('quantidade_embutida'), 
+                        id_nota,
+                        item.get('nome_produto'),
+                        item.get('quantidade_cupom'),
+                        item.get('unidade_medida_cupom'),
+                        item.get('quantidade_embutida'),
                         item.get('unidade_medida_embutida'),
-                        item.get('preco_unitario'), 
-                        item.get('preco_total_item'), 
+                        item.get('preco_unitario'),
+                        item.get('preco_total_item'),
                         item.get('preco_total_liquido'),
                         item.get('categoria_produto')
                     ))
+                    # Injeta o ID recém-criado no dicionário do item original
+                    item['id'] = cursor.fetchone()[0]
+                    itens_inseridos.append(item)
 
-            # 3. Registrar no Outbox
             payload_outbox = json.dumps({"id_nota": id_nota, "bronze_id": id_bronze})
             cursor.execute("""
                 INSERT INTO public.outbox_events (tipo_evento, payload)
@@ -204,6 +213,9 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
             """, ("NOVA_NOTA_FISCAL", payload_outbox))
 
         conexao.commit()
+        # Retorna o pacote completo para que o processamento_silver.py possa criar as movimentações
+        return id_nota, itens_inseridos
+
     except Exception as e:
         conexao.rollback()
         raise Exception(f"Erro na transação Silver (Nota): {e}")
@@ -217,7 +229,6 @@ def inserir_fatura_silver(id_bronze, dados):
 
     try:
         with conexao.cursor() as cursor:
-            # 1. Inserir Fatura (Cabeçalho principal)
             query_fatura = """
                 INSERT INTO silver.faturas (
                     bronze_id, banco, mes_referencia, valor_fatura, data_vencimento,
@@ -232,7 +243,6 @@ def inserir_fatura_silver(id_bronze, dados):
             ))
             silver_id = cursor.fetchone()[0]
 
-            # 2. Inserir as Transações da Fatura (Nova tabela filha)
             transacoes = dados.get('transacoes', [])
             if transacoes:
                 query_transacao = """
@@ -249,7 +259,6 @@ def inserir_fatura_silver(id_bronze, dados):
                         transacao.get('identificacao_cartao')
                     ))
 
-            # 3. Registrar no Outbox
             payload_outbox = json.dumps({"id_fatura": silver_id, "bronze_id": id_bronze})
             cursor.execute("""
                 INSERT INTO public.outbox_events (tipo_evento, payload)
@@ -260,6 +269,24 @@ def inserir_fatura_silver(id_bronze, dados):
     except Exception as e:
         conexao.rollback()
         raise Exception(f"Erro na transação Silver (Fatura): {e}")
+    finally:
+        conexao.close()
+
+def buscar_pendentes_outbox():
+    conexao = get_conexao()
+    if not conexao: return []
+    try:
+        with conexao.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, tipo_evento, payload
+                FROM public.outbox_events
+                WHERE status = 'PENDENTE'
+                ORDER BY criado_em ASC
+            """)
+            return cursor.fetchall()
+    except Exception as e:
+        logging.error(f"Erro ao buscar pendentes no outbox: {e}")
+        return []
     finally:
         conexao.close()
 
