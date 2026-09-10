@@ -31,6 +31,7 @@ def _construir_prompt(comando_telegram, nome_remetente):
         O texto fornecido pode conter UM ou MÚLTIPLOS produtos/gastos.
         Identifique e separe CADA PRODUTO individualmente.
         Retorne SEMPRE uma lista JSON. Se houver apenas um gasto, retorne uma lista contendo apenas um objeto. Se houver vários, retorne um objeto para cada um.
+        Se o usuário não fornecer a data e o horário, utilize o momento atual da extração no formato YYYY-MM-DD HH:MM:SS.
         Mantenha EXATAMENTE esta estrutura de chaves:
         [
             {
@@ -59,6 +60,7 @@ def _construir_prompt(comando_telegram, nome_remetente):
 
         Atenção aos Itens: O campo 'quantidade_cupom' refere-se ao multiplicador exato impresso na nota (ex: 1 UN).
         No entanto, leia atentamente o 'nome_produto'. Se a descrição contiver volumes, pesos ou pacotes (ex: '200G', '1KG', '500ML', 'C/25'), extraia esse valor numérico para 'quantidade_embutida' e a unidade para 'unidade_medida_embutida' (G, KG, ML, L, UN). Caso não haja, retorne null em ambos.
+        Atenção: Procure o horário exato impresso na nota fiscal para preencher a data_emissao de forma completa.
 
         Mantenha EXATAMENTE esta estrutura de chaves:
         {
