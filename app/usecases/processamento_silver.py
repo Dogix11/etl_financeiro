@@ -64,26 +64,27 @@ def executar_pipeline_silver():
 
             if comando_telegram == "/gasto":
                 logging.info(f"Tentando inserir {len(dados_extraidos)} itens referentes ao registro {id_bronze}.")
+                # O /gasto já trabalha naturalmente com a lista
                 for gasto in dados_extraidos:
                     inserir_movimentacao_silver(id_bronze, gasto)
             
             elif comando_telegram == "/nota":
-                # A nova lógica de Ledger: Grava a nota e espelha os itens
-                id_nota_fiscal, itens_inseridos = inserir_nota_fiscal_silver(id_bronze, dados_extraidos)
+                # EXTRAI O DICIONÁRIO DA LISTA: Pegamos o índice [0]
+                nota_dict = dados_extraidos[0]
+                id_nota_fiscal, itens_inseridos = inserir_nota_fiscal_silver(id_bronze, nota_dict)
                 
                 # Para cada item gerado no banco, cria uma movimentação espelhada
                 for item_nota in itens_inseridos:
-                    # Montamos um objeto compatível com a estrutura que o DAO de movimentação espera
                     movimentacao_espelho = {
-                        "data_transacao": dados_extraidos.get('data_emissao'),
+                        "data_transacao": nota_dict.get('data_emissao'),
                         "valor": item_nota['preco_total_liquido'],
                         "tipo_movimentacao": "despesa",
                         "direcao": "OUT",
-                        "contraparte": dados_extraidos.get('nome_emissor'),
+                        "contraparte": nota_dict.get('nome_emissor'),
                         "categoria": item_nota['categoria_produto'],
                         "descricao": item_nota['nome_produto'],
-                        "titular_pagamento": dados_extraidos.get('titular_pagamento'),
-                        "centro_custo": dados_extraidos.get('centro_custo'),
+                        "titular_pagamento": nota_dict.get('titular_pagamento'),
+                        "centro_custo": nota_dict.get('centro_custo'),
                         "percentual_diogo": item_nota['percentual_diogo'],
                         "percentual_flora": item_nota['percentual_flora'],
                         "valor_cota_diogo": item_nota['valor_cota_diogo'],
@@ -95,7 +96,9 @@ def executar_pipeline_silver():
                 logging.info(f"Nota Fiscal {id_nota_fiscal} e {len(itens_inseridos)} itens espelhados no Livro-Razão.")
 
             elif comando_telegram == "/fatura":
-                inserir_fatura_silver(id_bronze, dados_extraidos)
+                # EXTRAI O DICIONÁRIO DA LISTA: Pegamos o índice [0]
+                fatura_dict = dados_extraidos[0]
+                inserir_fatura_silver(id_bronze, fatura_dict)
             else:
                 raise ValueError(f"Comando de roteamento desconhecido: {comando_telegram}")
 

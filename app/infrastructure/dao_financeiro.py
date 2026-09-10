@@ -104,7 +104,6 @@ def inserir_movimentacao_silver(id_bronze, dados):
 
     try:
         with conexao.cursor() as cursor:
-            # Atualizado com colunas diogo/flora e chaves de ledger (nota_fiscal_id, item_nota_id)
             query = """
                 INSERT INTO silver.movimentacoes_financeiras (
                     bronze_id, data_transacao, valor, tipo_movimentacao, direcao,
@@ -156,14 +155,14 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
 
     try:
         with conexao.cursor() as cursor:
-            # Atualizado com as colunas renomeadas
+            # 1. Inserir Nota Fiscal (Agora corretamente SEM as colunas de rateio)
             query_nota = """
                 INSERT INTO silver.notas_fiscais (
                     bronze_id, chave_acesso, cnpj_emissor, nome_emissor, data_emissao,
                     valor_subtotal, valor_desconto, valor_acrescimo, valor_total,
                     categoria, forma_pagamento, natureza_operacao, titular_pagamento,
-                    centro_custo, percentual_diogo, percentual_flora, valor_cota_diogo, valor_cota_flora
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    centro_custo
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """
             cursor.execute(query_nota, (
@@ -171,8 +170,7 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
                 dados.get('data_emissao'), dados.get('valor_subtotal'), dados.get('valor_desconto'),
                 dados.get('valor_acrescimo'), dados.get('valor_total'), dados.get('categoria'),
                 dados.get('forma_pagamento'), dados.get('natureza_operacao'), dados.get('titular_pagamento'),
-                dados.get('centro_custo'), dados.get('percentual_diogo'), dados.get('percentual_flora'),
-                dados.get('valor_cota_diogo'), dados.get('valor_cota_flora')
+                dados.get('centro_custo')
             ))
             id_nota = cursor.fetchone()[0]
 
@@ -180,7 +178,6 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
             itens_inseridos = []
             
             if itens:
-                # O RETURNING id; foi adicionado para capturarmos os IDs gerados
                 query_item = """
                     INSERT INTO silver.itens_nota_fiscal (
                         nota_fiscal_id, nome_produto, quantidade, unidade_medida,
@@ -202,7 +199,6 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
                         item.get('preco_total_liquido'),
                         item.get('categoria_produto')
                     ))
-                    # Injeta o ID recém-criado no dicionário do item original
                     item['id'] = cursor.fetchone()[0]
                     itens_inseridos.append(item)
 
@@ -213,7 +209,6 @@ def inserir_nota_fiscal_silver(id_bronze, dados):
             """, ("NOVA_NOTA_FISCAL", payload_outbox))
 
         conexao.commit()
-        # Retorna o pacote completo para que o processamento_silver.py possa criar as movimentações
         return id_nota, itens_inseridos
 
     except Exception as e:
