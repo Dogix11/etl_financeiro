@@ -301,3 +301,35 @@ def atualizar_status_outbox(id_evento, status):
         logging.error(f"Erro ao atualizar outbox ID {id_evento}: {e}")
     finally:
         conexao.close()
+def registrar_log_llm(id_bronze, metadados):
+    """Grava os metadados de performance do LLM no banco de dados."""
+    if not metadados:
+        return
+        
+    conexao = get_conexao()
+    if not conexao: 
+        return
+        
+    try:
+        with conexao.cursor() as cursor:
+            query = """
+                INSERT INTO bronze.logs_llm_performance (
+                    bronze_id, request_id, modelo, latency_seconds,
+                    prompt_tokens, output_tokens, finish_reason
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(query, (
+                id_bronze,
+                metadados.get('request_id'),
+                metadados.get('modelo'),
+                metadados.get('latency_seconds'),
+                metadados.get('prompt_tokens'),
+                metadados.get('output_tokens'),
+                metadados.get('finish_reason')
+            ))
+        conexao.commit()
+    except Exception as e:
+        conexao.rollback()
+        logging.error(f"Erro ao inserir log de LLM para bronze_id {id_bronze}: {e}")
+    finally:
+        conexao.close()

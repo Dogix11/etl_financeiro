@@ -6,7 +6,8 @@ from infrastructure.dao_financeiro import (
     atualizar_status_bronze,
     inserir_movimentacao_silver,
     inserir_nota_fiscal_silver,
-    inserir_fatura_silver
+    inserir_fatura_silver,
+    registrar_log_llm  # <-- Nova importação do DAO
 )
 from services.llm_parser import extrair_dados_financeiros
 
@@ -48,7 +49,7 @@ def executar_pipeline_silver():
 
     for registro in pendentes:
         id_bronze, origem, tipo_midia, conteudo, caminho, payload_original = registro
-        
+
         # 1. Extrai as duas chaves que salvamos no payload_llm
         comando_telegram = payload_original.get("comando_telegram")
         nome_remetente = payload_original.get("nome_remetente", "Desconhecido")
@@ -56,24 +57,26 @@ def executar_pipeline_silver():
         logging.info(f"🔄 Processando Bronze ID: {id_bronze} | Comando: {comando_telegram} | De: {nome_remetente}")
 
         try:
-            # 2. Passa o nome_remetente para o Gemini
-            dados_extraidos = extrair_dados_financeiros(tipo_midia, conteudo, caminho, comando_telegram, nome_remetente)
+            # 2. Desempacota a tupla (Dados + Metadados de Performance)
+            dados_extraidos, metadados = extrair_dados_financeiros(tipo_midia, conteudo, caminho, comando_telegram, nome_remetente)
 
             if not dados_extraidos:
                 raise ValueError("LLM não retornou um JSON válido.")
 
+            # 3. Grava o log de performance LLM no banco de dados
+            if metadados:
+                registrar_log_llm(id_bronze, metadados)
+                logging.info(f"📊 Metadados LLM: {metadados.get('latency_seconds')}s | In: {metadados.get('prompt_tokens')} tokens | Out: {metadados.get('output_tokens')} tokens")
+
             if comando_telegram == "/gasto":
                 logging.info(f"Tentando inserir {len(dados_extraidos)} itens referentes ao registro {id_bronze}.")
-                # O /gasto já trabalha naturalmente com a lista
                 for gasto in dados_extraidos:
                     inserir_movimentacao_silver(id_bronze, gasto)
-            
+
             elif comando_telegram == "/nota":
-                # EXTRAI O DICIONÁRIO DA LISTA: Pegamos o índice [0]
                 nota_dict = dados_extraidos[0]
                 id_nota_fiscal, itens_inseridos = inserir_nota_fiscal_silver(id_bronze, nota_dict)
-                
-                # Para cada item gerado no banco, cria uma movimentação espelhada
+
                 for item_nota in itens_inseridos:
                     movimentacao_espelho = {
                         "data_transacao": nota_dict.get('data_emissao'),
@@ -96,7 +99,6 @@ def executar_pipeline_silver():
                 logging.info(f"Nota Fiscal {id_nota_fiscal} e {len(itens_inseridos)} itens espelhados no Livro-Razão.")
 
             elif comando_telegram == "/fatura":
-                # EXTRAI O DICIONÁRIO DA LISTA: Pegamos o índice [0]
                 fatura_dict = dados_extraidos[0]
                 inserir_fatura_silver(id_bronze, fatura_dict)
             else:

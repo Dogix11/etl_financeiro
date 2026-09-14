@@ -2,6 +2,8 @@ import os
 import json
 import logging
 import mimetypes
+import time
+import uuid
 from datetime import datetime
 from google import genai
 from google.genai import types
@@ -31,6 +33,7 @@ def _construir_prompt(comando_telegram, nome_remetente):
         O texto fornecido pode conter UM ou MÚLTIPLOS produtos/gastos.
         Identifique e separe CADA PRODUTO individualmente.
         Retorne SEMPRE uma lista JSON. Se houver apenas um gasto, retorne uma lista contendo apenas um objeto. Se houver vários, retorne um objeto para cada um.
+        Se o usuário não fornecer a data e o horário, utilize o momento atual da extração no formato YYYY-MM-DD HH:MM:SS.
         Mantenha EXATAMENTE esta estrutura de chaves:
         [
             {
@@ -59,6 +62,7 @@ def _construir_prompt(comando_telegram, nome_remetente):
 
         Atenção aos Itens: O campo 'quantidade_cupom' refere-se ao multiplicador exato impresso na nota (ex: 1 UN).
         No entanto, leia atentamente o 'nome_produto'. Se a descrição contiver volumes, pesos ou pacotes (ex: '200G', '1KG', '500ML', 'C/25'), extraia esse valor numérico para 'quantidade_embutida' e a unidade para 'unidade_medida_embutida' (G, KG, ML, L, UN). Caso não haja, retorne null em ambos.
+        Atenção: Procure o horário exato impresso na nota fiscal para preencher a data_emissao de forma completa.
 
         Mantenha EXATAMENTE esta estrutura de chaves:
         {
@@ -125,7 +129,6 @@ def _construir_prompt(comando_telegram, nome_remetente):
     return None
 
 def _desbloquear_pdf(caminho_arquivo):
-    """Tenta desbloquear o PDF com as senhas configuradas e retorna um arquivo temporário."""
     senhas_env = os.getenv("SENHA_FATURA", "")
     senhas = [s.strip() for s in senhas_env.split(",")] if senhas_env else []
 
@@ -154,12 +157,11 @@ def _desbloquear_pdf(caminho_arquivo):
         logging.error(f"Erro ao tentar ler o PDF: {e}")
         raise e
 
-# Assinatura atualizada para receber o nome_remetente
 def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, comando_telegram, nome_remetente="Desconhecido"):
     prompt = _construir_prompt(comando_telegram, nome_remetente)
     if not prompt:
         logging.error(f"Comando não suportado pelo LLM: {comando_telegram}")
-        return None
+        return None, None
 
     client = genai.Client(
         vertexai=True,
@@ -190,6 +192,10 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
         if conteudo_texto:
             conteudos_envio.append(f"Texto do usuário: {conteudo_texto}")
 
+        # Início do rastreamento de performance
+        request_id = str(uuid.uuid4())
+        start_time = time.perf_counter()
+
         resposta = client.models.generate_content(
             model=MODELO_LLM,
             contents=conteudos_envio,
@@ -198,12 +204,38 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
             )
         )
 
+        # Fim do rastreamento de performance
+        latency = time.perf_counter() - start_time
+
+        # Extração segura dos metadados (prevenindo quebras se a API omitir algo)
+        try:
+            prompt_tokens = resposta.usage_metadata.prompt_token_count
+            output_tokens = resposta.usage_metadata.candidates_token_count
+        except AttributeError:
+            prompt_tokens = 0
+            output_tokens = 0
+
+        try:
+            # Algumas versões da API retornam Enum, outras string. Tratamos para string.
+            finish_reason = str(resposta.candidates[0].finish_reason.name) if resposta.candidates else "UNKNOWN"
+        except AttributeError:
+            finish_reason = str(resposta.candidates[0].finish_reason) if resposta.candidates else "UNKNOWN"
+
+        log_requisicao = {
+            "request_id": request_id,
+            "modelo": MODELO_LLM,
+            "latency_seconds": round(latency, 2),
+            "prompt_tokens": prompt_tokens,
+            "output_tokens": output_tokens,
+            "finish_reason": finish_reason
+        }
+
         resultado = json.loads(resposta.text)
 
         if isinstance(resultado, dict):
             resultado = [resultado]
 
-        return resultado
+        return resultado, log_requisicao
 
     except Exception as e:
         logging.error(f"Falha na extração Vertex AI: {e}")
