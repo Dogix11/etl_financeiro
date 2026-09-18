@@ -209,14 +209,18 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
 
         # Extração segura dos metadados (prevenindo quebras se a API omitir algo)
         try:
-            prompt_tokens = resposta.usage_metadata.prompt_token_count
-            output_tokens = resposta.usage_metadata.candidates_token_count
+            usage = resposta.usage_metadata
+            prompt_tokens = getattr(usage, 'prompt_token_count', 0)
+            output_tokens = getattr(usage, 'candidates_token_count', 0)
+            total_tokens = getattr(usage, 'total_token_count', 0)
+            thoughts_tokens = getattr(usage, 'thoughts_token_count', 0)
         except AttributeError:
             prompt_tokens = 0
             output_tokens = 0
+            total_tokens = 0
+            thoughts_tokens = 0
 
         try:
-            # Algumas versões da API retornam Enum, outras string. Tratamos para string.
             finish_reason = str(resposta.candidates[0].finish_reason.name) if resposta.candidates else "UNKNOWN"
         except AttributeError:
             finish_reason = str(resposta.candidates[0].finish_reason) if resposta.candidates else "UNKNOWN"
@@ -227,6 +231,8 @@ def extrair_dados_financeiros(tipo_midia, conteudo_texto, caminho_arquivo, coman
             "latency_seconds": round(latency, 2),
             "prompt_tokens": prompt_tokens,
             "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "thoughts_tokens": thoughts_tokens,
             "finish_reason": finish_reason
         }
 

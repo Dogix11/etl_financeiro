@@ -315,16 +315,18 @@ def registrar_log_llm(id_bronze, metadados):
             query = """
                 INSERT INTO bronze.logs_llm_performance (
                     bronze_id, request_id, modelo, latency_seconds,
-                    prompt_tokens, output_tokens, finish_reason
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    prompt_tokens, output_tokens, total_tokens, thoughts_tokens, finish_reason
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(query, (
                 id_bronze,
                 metadados.get('request_id'),
                 metadados.get('modelo'),
                 metadados.get('latency_seconds'),
-                metadados.get('prompt_tokens'),
-                metadados.get('output_tokens'),
+                metadados.get('prompt_tokens', 0),
+                metadados.get('output_tokens', 0),
+                metadados.get('total_tokens', 0),
+                metadados.get('thoughts_tokens', 0),
                 metadados.get('finish_reason')
             ))
         conexao.commit()

@@ -21,7 +21,7 @@ def _formatar_mensagem(id_evento, tipo_evento, payload):
         
         return (
             f"💸 <b>Gasto / Movimentação</b>\n"
-            f"Local: {payload.get('descricao', 'N/A')}\n"
+            f"Produto: {payload.get('descricao', 'N/A')}\n"
             f"Valor Total: R$ {valor:.2f}\n"
             f"Cota Diogo: R$ {cota_diogo:.2f}\n"
             f"Cota Flora: R$ {cota_flora:.2f}"
