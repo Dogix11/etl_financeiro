@@ -28,7 +28,7 @@ def handle_photo(message):
     try:
         bot.reply_to(message, "📸 Recebi a foto! Baixando e enviando para o datalake de Notas Fiscais...")
         
-        # O Telegram envia a foto em vários tamanhos, pegamos o maior (último da lista)
+        # O Telegram envia a foto em vários tamanhos, pega o maior tamanho
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         

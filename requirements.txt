@@ -3,8 +3,6 @@
 python_telegram_bot
 
 # --- Suporte e conexões com APIs de LLM ---
-# Manipulação básica de imagens (abrir, redimensionar, salvar)
-Pillow
 # Conexão com a API do Gemini
 google-genai
 # Conexão com a API da OpenAI

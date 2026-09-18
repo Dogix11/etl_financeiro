@@ -1,10 +1,11 @@
+
 # 1. Usa uma imagem base oficial do Python, versão slim para economizar espaço
 FROM python:3.11-slim
 
 # 2. Configurações de ambiente do Python para rodar melhor no Docker
 # Evita a criação de arquivos de cache .pyc
 ENV PYTHONDONTWRITEBYTECODE=1
-# Garante que os logs (prints) apareçam em tempo real no terminal
+# Garante que os logs apareçam em tempo real no terminal
 ENV PYTHONUNBUFFERED=1
 
 # 3. Define a pasta principal dentro do container

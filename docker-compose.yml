@@ -8,8 +8,6 @@ services:
       dockerfile: Dockerfile
     container_name: app_financeiro_bot
     restart: unless-stopped
-    # Se quiser ser explícito, pode adicionar o command aqui também:
-    # command: python /app/delivery/telegram_listener.py
     environment:
       - TZ=America/Sao_Paulo
       - PYTHONPATH=/app
@@ -32,7 +30,7 @@ services:
       dockerfile: Dockerfile
     container_name: app_financeiro_worker
     restart: unless-stopped
-    command: python /app/worker.py  # <-- Aqui você aponta o worker
+    command: python /app/worker.py
     environment:
       - TZ=America/Sao_Paulo
       - PYTHONPATH=/app
