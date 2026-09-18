@@ -17,7 +17,6 @@ def _gerar_hash_texto(texto):
         return None
     return hashlib.sha256(texto.encode('utf-8')).hexdigest()
 
-# Adicionamos o nome_remetente com um valor padrão seguro
 def processar_ingestao_bronze(tipo_midia, comando, conteudo_texto=None, caminho_arquivo=None, nome_remetente="Desconhecido"):
     hash_dado = _gerar_hash_arquivo(caminho_arquivo) if caminho_arquivo else _gerar_hash_texto(conteudo_texto)
 
@@ -27,7 +26,6 @@ def processar_ingestao_bronze(tipo_midia, comando, conteudo_texto=None, caminho_
             logging.info(f"🗑️ Arquivo duplicado descartado: {caminho_arquivo}")
         return False, "⚠️ Dado ignorado: Este arquivo ou texto já foi processado anteriormente."
 
-    # Passamos o nome_remetente para o DAO
     id_gerado = registrar_entrada_bronze(
         tipo_midia=tipo_midia, 
         comando=comando, 
