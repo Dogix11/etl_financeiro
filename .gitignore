@@ -1,15 +1,15 @@
 # Ignora arquivos de ambiente e senhas
 .env
 
-# Ignora as pastas de volumes (não queremos subir milhares de fotos e PDFs pro GitHub)
+# Ignora as pastas de volumes
 volumes/
-app/notas_fiscais/
-app/faturas/
 
 # Ignora pastas de cache do Python
 __pycache__/
 *.pyc
 
-# Ignora o banco de dados local do PostgreSQL (caso a pasta de dados do docker fique exposta)
+# Ignora o banco de dados local do PostgreSQL
 pgdata/
+
+# Ignora os Jsons das chaves
 .secrets/
