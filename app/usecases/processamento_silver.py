@@ -7,7 +7,7 @@ from infrastructure.dao_financeiro import (
     inserir_movimentacao_silver,
     inserir_nota_fiscal_silver,
     inserir_fatura_silver,
-    registrar_log_llm  # <-- Nova importação do DAO
+    registrar_log_llm
 )
 from services.llm_parser import extrair_dados_financeiros
 
@@ -50,7 +50,7 @@ def executar_pipeline_silver():
     for registro in pendentes:
         id_bronze, origem, tipo_midia, conteudo, caminho, payload_original = registro
 
-        # 1. Extrai as duas chaves que salvamos no payload_llm
+        # 1. Extrai as informações salvas no payload para encontrar o fluxo correto
         comando_telegram = payload_original.get("comando_telegram")
         nome_remetente = payload_original.get("nome_remetente", "Desconhecido")
 
